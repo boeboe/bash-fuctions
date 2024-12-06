@@ -22,8 +22,8 @@ readonly LIGHTBLUE="\033[0;36m"
 readonly LIGHTBLUEB="\033[1;36m"
 
 # Logging levels: DEBUG=0, INFO=1, WARNING=2, ERROR=3
-readonly LOG_LEVEL=1       # Set the current logging threshold
-readonly SILENT_MODE=false # Suppress all logs if set to true
+LOG_LEVEL=1       # Set the current logging threshold
+SILENT_MODE=false # Suppress all logs if set to true
 
 # Logs a message with a specified level, color, and label.
 # Arguments:
