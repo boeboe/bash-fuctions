@@ -14,6 +14,11 @@ readonly YAML_DOCUMENT_BOUNDARY_RE="^[[:space:]]*(---|...)$"
 # Global variable to hold intermediate JSON structure
 INTERMEDIATE_JSON="[]"
 
+# Tracks whether we are currently processing a block scalar
+BLOCK_SCALAR_KEY=""
+BLOCK_SCALAR_INDENTATION=0
+BLOCK_SCALAR_BASE_INDENTATION=0
+
 # Parse YAML to JSON (entry point for end users)
 # Usage: yaml_to_json <yaml_string>
 function yaml_to_json() {
@@ -52,13 +57,21 @@ function process_line() {
   local indent
   indent=$(echo "${line}" | sed -E "s/${YAML_INDENTATION_RE}/\1/" | awk '{print length}')
 
+  # If processing a block scalar and the line matches its context
+  if [[ -n "${BLOCK_SCALAR_KEY}" && ${indent} -gt ${BLOCK_SCALAR_INDENTATION} ]]; then
+    handle_block_scalar_line "${line}" "${indent}"
+    return
+  fi
+
+  # Reset block scalar context if indentation decreases or new key found
+  if [[ ${indent} -le ${BLOCK_SCALAR_INDENTATION} ]]; then
+    BLOCK_SCALAR_KEY=""
+    BLOCK_SCALAR_INDENTATION=0
+  fi
+
   # Classify the line type
   local line_type
   line_type=$(classify_line "${line}")
-
-  # Log the process for debugging
-  # print_info "Processing line: '${line}'"
-  # print_info "Indentation: ${indent}, Line type: ${line_type}"
 
   # Delegate to appropriate handler function
   case "${line_type}" in
@@ -79,6 +92,9 @@ function process_line() {
       ;;
     "block_scalar")
       handle_block_scalar "${line}" "${indent}"
+      ;;
+    "block_scalar_line")
+      # This case should never be hit directly since block scalar lines are handled within context
       ;;
     "document_boundary")
       handle_document_boundary "${line}" "${indent}"
@@ -111,7 +127,6 @@ function classify_line() {
   elif [[ "${line}" =~ ${YAML_LIST_ITEM_RE} ]]; then
     echo "list_item"
   else
-    print_error "Skipping unsupported type: ${line}"
     echo "unknown"
   fi
 }
@@ -182,7 +197,32 @@ function intermediate_to_json() {
         result=$(echo "${result}" | jq -c --arg parent_key "${parent_key}" --arg value "${value}" '.[$parent_key] += [$value]')
         ;;
       "block_scalar")
-        # Handle block scalar if necessary
+        # Start capturing block scalar content
+        local key
+        key=$(echo "${entry}" | jq -r .key)
+        local content=""
+        for ((j = i + 1; j < $(echo "${intermediate_json}" | jq 'length // 0'); j++)); do
+          local next_entry
+          next_entry=$(echo "${intermediate_json}" | jq .["${j}"])
+          local next_type
+          next_type=$(echo "${next_entry}" | jq -r .type)
+          if [[ "${next_type}" == "block_scalar_line" ]]; then
+            # Extract the content and append a newline correctly
+            content="${content}$(echo "${next_entry}" | jq -r .content)\n"
+          else
+            break
+          fi
+        done
+
+        # Add the block scalar content to the result
+        result=$(echo "${result}" | jq -c --arg key "${key}" --arg content "${content}" '.[$key] = $content')
+        ;;
+      "block_scalar_line")
+        # Skip block scalar lines here, they are handled within "block_scalar"
+        continue
+        ;;
+      "comment"| "empty"| "document_boundary"| "unknown")
+        continue
         ;;
       *)
         print_error "Skipping unsupported type: ${type}"
@@ -270,7 +310,21 @@ function handle_block_scalar() {
   local indent="${2}"
   local key
   key=$(extract_key "${line}")
+  BLOCK_SCALAR_KEY="${key}"
+  BLOCK_SCALAR_INDENTATION="${indent}"
+  BLOCK_SCALAR_BASE_INDENTATION=0
   INTERMEDIATE_JSON=$(echo "${INTERMEDIATE_JSON}" | jq -c --arg type "block_scalar" --arg indent "${indent}" --arg key "${key}" '. += [{"type": $type, "indentation": ($indent | tonumber), "key": $key}]')
+}
+
+function handle_block_scalar_line() {
+  local line="${1}"
+  local indent="${2}"
+  if [[ ${BLOCK_SCALAR_BASE_INDENTATION} -eq 0 ]]; then
+    BLOCK_SCALAR_BASE_INDENTATION="${indent}"
+  fi
+  local stripped_content
+  stripped_content=$(echo "${line}" | sed -E "s/^([[:space:]]{${BLOCK_SCALAR_BASE_INDENTATION}})//")
+  INTERMEDIATE_JSON=$(echo "${INTERMEDIATE_JSON}" | jq -c --arg type "block_scalar_line" --arg indent "${indent}" --arg content "${stripped_content}" '. += [{"type": $type, "indentation": ($indent | tonumber), "content": $content}]')
 }
 
 function handle_document_boundary() {

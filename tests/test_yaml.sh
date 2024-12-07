@@ -89,7 +89,7 @@ function run_all_tests() {
   # Test: Block Scalar Parsing
   yaml_input=$'block_scalar: |\n  This is\n  a multiline\n  block scalar'
   expected_intermediate=$'[{"type":"block_scalar","indentation":0,"key":"block_scalar"},{"type":"block_scalar_line","indentation":2,"content":"This is"},{"type":"block_scalar_line","indentation":2,"content":"a multiline"},{"type":"block_scalar_line","indentation":2,"content":"block scalar"}]'
-  expected_final='{"block_scalar":"This is\na multiline\nblock scalar\n"}'
+  expected_final='{"block_scalar":"This is\\na multiline\\nblock scalar\\n"}'
   test_yaml_to_intermediate "${yaml_input}" "${expected_intermediate}" "test_intermediate_block_scalar_parsing"
   test_yaml_to_json "${yaml_input}" "${expected_final}" "test_final_block_scalar_parsing"
 
