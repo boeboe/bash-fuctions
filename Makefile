@@ -7,14 +7,17 @@
 
 # Variables
 FUNCTIONS_DIR := $(shell realpath ./functions)
+TEST_SCRIPTS := $(wildcard tests/test_*.sh)
 
 help: ## Display this help message
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z0-9_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 
 test: check-env ## Run all tests
 	@echo "Running tests..."
-	@FUNCTIONS_DIR=$(FUNCTIONS_DIR) /bin/bash tests/test_args.sh || true
-	@FUNCTIONS_DIR=$(FUNCTIONS_DIR) /bin/bash tests/test_logging.sh || true
+	@for script in $(TEST_SCRIPTS); do \
+		echo "Running $$script..."; \
+		FUNCTIONS_DIR=$(FUNCTIONS_DIR) /bin/bash $$script || true; \
+	done
 	@echo "Tests completed."
 
 check-env: ## Verify required tools (bash, jq) are installed
